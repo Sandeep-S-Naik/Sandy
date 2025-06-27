@@ -348,18 +348,92 @@ async def get_doctor_patients(doctor_id: str):
             patient_compliance.append(compliance_response)
         except:
             # Handle patients with no data
-            patient_compliance.append(PatientCompliance(
-                patient_id=patient["id"],
-                patient_name=patient["name"],
-                total_sessions=0,
-                total_duration_minutes=0,
-                average_daily_usage=0,
-                compliance_percentage=0,
-                last_session=None,
-                device_connected=False
-            ))
+            patient_compliance.append({
+                "patient_id": patient["id"],
+                "patient_name": patient["name"],
+                "total_sessions": 0,
+                "total_duration_minutes": 0,
+                "average_daily_usage": 0,
+                "average_daily_hours": 0,
+                "compliance_percentage": 0,
+                "last_session": None,
+                "device_connected": False,
+                "usage_trend": {"direction": "stable", "percentage": 0}
+            })
     
     return patient_compliance
+
+@api_router.get("/doctors/{doctor_id}/dashboard")
+async def get_doctor_dashboard(doctor_id: str):
+    """Get comprehensive dashboard data for doctor"""
+    # Get all patients
+    patients = await db.users.find({"user_type": "patient"}).to_list(100)
+    
+    # Get today's active patients (patients who uploaded data today)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    active_today = await db.usage_sessions.distinct("patient_id", {
+        "created_at": {"$gte": today_start}
+    })
+    
+    # Get patients who haven't uploaded in last 24 hours (alerts)
+    yesterday = datetime.utcnow() - timedelta(days=1)
+    recent_active_patients = await db.usage_sessions.distinct("patient_id", {
+        "created_at": {"$gte": yesterday}
+    })
+    
+    all_patient_ids = [p["id"] for p in patients]
+    inactive_patients = [pid for pid in all_patient_ids if pid not in recent_active_patients]
+    
+    # Get detailed alerts for inactive patients
+    alerts = []
+    for patient_id in inactive_patients:
+        patient = await db.users.find_one({"id": patient_id})
+        if patient:
+            # Get last session
+            last_session = await db.usage_sessions.find_one(
+                {"patient_id": patient_id},
+                sort=[("created_at", -1)]
+            )
+            
+            days_inactive = 1  # Default to 1 day
+            if last_session:
+                days_inactive = (datetime.utcnow() - last_session["created_at"]).days
+            
+            alerts.append({
+                "patient_id": patient_id,
+                "patient_name": patient["name"],
+                "days_inactive": days_inactive,
+                "last_session": last_session["created_at"] if last_session else None,
+                "severity": "high" if days_inactive > 3 else "medium" if days_inactive > 1 else "low"
+            })
+    
+    # Calculate overall statistics
+    total_patients = len(patients)
+    active_today_count = len(active_today)
+    alert_count = len(alerts)
+    
+    # Get compliance distribution
+    compliance_distribution = {"high": 0, "medium": 0, "low": 0}
+    for patient in patients:
+        try:
+            compliance = await get_patient_compliance(patient["id"])
+            if compliance["compliance_percentage"] >= 80:
+                compliance_distribution["high"] += 1
+            elif compliance["compliance_percentage"] >= 50:
+                compliance_distribution["medium"] += 1
+            else:
+                compliance_distribution["low"] += 1
+        except:
+            compliance_distribution["low"] += 1
+    
+    return {
+        "total_patients": total_patients,
+        "active_today": active_today_count,
+        "alert_count": alert_count,
+        "alerts": alerts,
+        "compliance_distribution": compliance_distribution,
+        "activity_rate": round((active_today_count / max(total_patients, 1)) * 100, 1)
+    }
 
 @api_router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
