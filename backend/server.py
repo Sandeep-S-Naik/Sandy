@@ -213,7 +213,7 @@ async def get_patient_usage(patient_id: str, days: int = 7):
 
 @api_router.get("/patients/{patient_id}/compliance")
 async def get_patient_compliance(patient_id: str):
-    """Get patient compliance summary"""
+    """Get patient compliance summary with enhanced metrics"""
     # Get user info
     user = await db.users.find_one({"id": patient_id})
     if not user:
@@ -233,7 +233,8 @@ async def get_patient_compliance(patient_id: str):
     # Calculate compliance metrics
     total_duration = sum(session.get("duration_minutes", 0) for session in sessions)
     total_sessions = len(sessions)
-    average_daily_usage = total_duration / 30 if total_duration > 0 else 0
+    average_daily_usage_minutes = total_duration / 30 if total_duration > 0 else 0
+    average_daily_hours = average_daily_usage_minutes / 60
     
     # Compliance percentage (assuming 8 hours/day target)
     target_minutes_per_month = 30 * 8 * 60  # 30 days * 8 hours * 60 minutes
@@ -241,16 +242,98 @@ async def get_patient_compliance(patient_id: str):
     
     last_session = max((datetime.fromisoformat(session["created_at"].replace("Z", "+00:00")) if isinstance(session["created_at"], str) else session["created_at"]) for session in sessions) if sessions else None
     
-    return PatientCompliance(
-        patient_id=patient_id,
-        patient_name=user["name"],
-        total_sessions=total_sessions,
-        total_duration_minutes=total_duration,
-        average_daily_usage=average_daily_usage,
-        compliance_percentage=compliance_percentage,
-        last_session=last_session,
-        device_connected=device_connected
-    )
+    # Calculate usage trend (last 7 days vs previous 7 days)
+    trend = await calculate_usage_trend(patient_id)
+    
+    return {
+        "patient_id": patient_id,
+        "patient_name": user["name"],
+        "total_sessions": total_sessions,
+        "total_duration_minutes": total_duration,
+        "average_daily_usage": average_daily_usage_minutes,
+        "average_daily_hours": round(average_daily_hours, 2),
+        "compliance_percentage": compliance_percentage,
+        "last_session": last_session,
+        "device_connected": device_connected,
+        "usage_trend": trend
+    }
+
+async def calculate_usage_trend(patient_id: str):
+    """Calculate usage trend comparing recent vs previous period"""
+    now = datetime.utcnow()
+    
+    # Last 7 days
+    last_week_start = now - timedelta(days=7)
+    last_week_sessions = await db.usage_sessions.find({
+        "patient_id": patient_id,
+        "created_at": {"$gte": last_week_start}
+    }).to_list(1000)
+    
+    # Previous 7 days
+    prev_week_start = now - timedelta(days=14)
+    prev_week_end = now - timedelta(days=7)
+    prev_week_sessions = await db.usage_sessions.find({
+        "patient_id": patient_id,
+        "created_at": {"$gte": prev_week_start, "$lt": prev_week_end}
+    }).to_list(1000)
+    
+    last_week_duration = sum(session.get("duration_minutes", 0) for session in last_week_sessions)
+    prev_week_duration = sum(session.get("duration_minutes", 0) for session in prev_week_sessions)
+    
+    if prev_week_duration == 0:
+        if last_week_duration > 0:
+            return {"direction": "increasing", "percentage": 100}
+        else:
+            return {"direction": "stable", "percentage": 0}
+    
+    change_percentage = ((last_week_duration - prev_week_duration) / prev_week_duration) * 100
+    
+    if change_percentage > 10:
+        return {"direction": "increasing", "percentage": round(change_percentage, 1)}
+    elif change_percentage < -10:
+        return {"direction": "decreasing", "percentage": round(abs(change_percentage), 1)}
+    else:
+        return {"direction": "stable", "percentage": round(abs(change_percentage), 1)}
+
+@api_router.get("/patients/{patient_id}/analytics")
+async def get_patient_analytics(patient_id: str, days: int = 30):
+    """Get detailed analytics for patient usage patterns"""
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    sessions = await db.usage_sessions.find({
+        "patient_id": patient_id,
+        "created_at": {"$gte": start_date}
+    }).sort("created_at", 1).to_list(1000)
+    
+    # Group by day for trend analysis
+    daily_usage = defaultdict(int)
+    day_night_usage = {"day": 0, "night": 0}
+    
+    for session in sessions:
+        date_key = session["created_at"].strftime("%Y-%m-%d")
+        daily_usage[date_key] += session.get("duration_minutes", 0)
+        day_night_usage[session.get("time_of_day", "day")] += session.get("duration_minutes", 0)
+    
+    # Create time series data
+    time_series = []
+    current_date = start_date
+    while current_date <= datetime.utcnow():
+        date_key = current_date.strftime("%Y-%m-%d")
+        time_series.append({
+            "date": date_key,
+            "usage_minutes": daily_usage.get(date_key, 0),
+            "usage_hours": round(daily_usage.get(date_key, 0) / 60, 2)
+        })
+        current_date += timedelta(days=1)
+    
+    return {
+        "time_series": time_series,
+        "day_night_distribution": day_night_usage,
+        "total_days": len(daily_usage),
+        "active_days": len([d for d in daily_usage.values() if d > 0]),
+        "average_daily_minutes": sum(daily_usage.values()) / max(len(daily_usage), 1),
+        "average_daily_hours": round(sum(daily_usage.values()) / max(len(daily_usage), 1) / 60, 2)
+    }
 
 @api_router.get("/doctors/{doctor_id}/patients")
 async def get_doctor_patients(doctor_id: str):
