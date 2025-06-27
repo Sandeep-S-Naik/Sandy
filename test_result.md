@@ -152,15 +152,18 @@
 
   - task: "Compliance Monitoring"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Created compliance calculation with percentage scoring and patient overview"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested compliance monitoring endpoint. Compliance percentage is calculated correctly based on usage data."
 
   - task: "Doctor Dashboard APIs"
     implemented: true
