@@ -275,17 +275,13 @@
   run_ui: false
 
 ## test_plan:
-  current_focus:
-    - "User Authentication System"
-    - "Bluetooth Device Management"
-    - "Usage Data Collection"
-    - "Compliance Monitoring"
-    - "Doctor Dashboard APIs"
-    - "WebSocket Real-time Updates"
+  current_focus: []
   stuck_tasks: []
-  test_all: true
+  test_all: false
   test_priority: "high_first"
 
 ## agent_communication:
   - agent: "main"
     message: "Built complete doctor-patient dashboard with Bluetooth connectivity, data tracking, and compliance monitoring. Ready for backend testing to verify all API endpoints work correctly."
+  - agent: "testing"
+    message: "Completed comprehensive testing of all backend API endpoints. Fixed a JSON serialization issue with datetime objects in WebSocket messages. All endpoints are now working correctly."
