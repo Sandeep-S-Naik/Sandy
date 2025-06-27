@@ -13,6 +13,14 @@ from datetime import datetime, timedelta
 import json
 import asyncio
 from collections import defaultdict
+from datetime import datetime, timedelta
+
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
