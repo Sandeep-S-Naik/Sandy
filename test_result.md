@@ -122,15 +122,18 @@
 
   - task: "Bluetooth Device Management"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Created endpoints for device registration and status tracking"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested device registration and retrieval endpoints. Devices are properly stored in MongoDB and can be retrieved."
 
   - task: "Usage Data Collection"
     implemented: true
