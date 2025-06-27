@@ -137,15 +137,18 @@
 
   - task: "Usage Data Collection"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented data collection from ESP devices with duration and time tracking"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested Bluetooth data collection endpoint. Fixed a JSON serialization issue with datetime objects in WebSocket messages."
 
   - task: "Compliance Monitoring"
     implemented: true
