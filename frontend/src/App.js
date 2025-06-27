@@ -1,6 +1,33 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 import axios from "axios";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { format, parseISO, subDays } from 'date-fns';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+);
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -237,12 +264,12 @@ const BluetoothConnection = ({ patientId, onDeviceConnected }) => {
   );
 };
 
-// Usage Chart Component (Simple version)
-const UsageChart = ({ usageData }) => {
-  if (!usageData || usageData.length === 0) {
+// Usage Trend Chart Component
+const UsageTrendChart = ({ analytics }) => {
+  if (!analytics || !analytics.time_series || analytics.time_series.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage History</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage Trend</h3>
         <div className="text-center py-8 text-gray-500">
           No usage data available yet
         </div>
@@ -250,29 +277,97 @@ const UsageChart = ({ usageData }) => {
     );
   }
 
+  const chartData = {
+    labels: analytics.time_series.map(item => format(parseISO(item.date + 'T00:00:00'), 'MMM dd')),
+    datasets: [
+      {
+        label: 'Daily Usage (hours)',
+        data: analytics.time_series.map(item => item.usage_hours),
+        borderColor: 'rgb(59, 130, 246)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        tension: 0.4,
+        fill: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Daily Usage Trend',
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Hours'
+        }
+      }
+    },
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
-      <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage History</h3>
-      <div className="space-y-3">
-        {usageData.slice(-10).map((session, index) => (
-          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div>
-              <div className="font-medium text-gray-800">
-                {session.duration_minutes} minutes
-              </div>
-              <div className="text-sm text-gray-600">
-                {session.time_of_day} • {new Date(session.created_at).toLocaleDateString()}
-              </div>
-            </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              session.compliance_score >= 80 ? 'bg-green-100 text-green-800' :
-              session.compliance_score >= 60 ? 'bg-yellow-100 text-yellow-800' :
-              'bg-red-100 text-red-800'
-            }`}>
-              {Math.round(session.compliance_score)}%
-            </div>
-          </div>
-        ))}
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage Trend</h3>
+      <div className="h-64">
+        <Line data={chartData} options={options} />
+      </div>
+    </div>
+  );
+};
+
+// Day/Night Usage Distribution Chart
+const DayNightChart = ({ analytics }) => {
+  if (!analytics || !analytics.day_night_distribution) {
+    return null;
+  }
+
+  const chartData = {
+    labels: ['Day Usage', 'Night Usage'],
+    datasets: [
+      {
+        data: [
+          Math.round(analytics.day_night_distribution.day / 60 * 10) / 10,
+          Math.round(analytics.day_night_distribution.night / 60 * 10) / 10
+        ],
+        backgroundColor: [
+          'rgba(255, 193, 7, 0.8)',
+          'rgba(75, 192, 192, 0.8)',
+        ],
+        borderColor: [
+          'rgba(255, 193, 7, 1)',
+          'rgba(75, 192, 192, 1)',
+        ],
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'bottom',
+      },
+      title: {
+        display: true,
+        text: 'Day vs Night Usage (Hours)',
+      },
+    },
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage Distribution</h3>
+      <div className="h-64">
+        <Doughnut data={chartData} options={options} />
       </div>
     </div>
   );
@@ -282,10 +377,12 @@ const UsageChart = ({ usageData }) => {
 const PatientDashboard = ({ user }) => {
   const [usageData, setUsageData] = useState([]);
   const [compliance, setCompliance] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
     fetchUsageData();
     fetchCompliance();
+    fetchAnalytics();
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -314,6 +411,15 @@ const PatientDashboard = ({ user }) => {
     }
   };
 
+  const fetchAnalytics = async () => {
+    try {
+      const response = await axios.get(`${API}/patients/${user.id}/analytics`);
+      setAnalytics(response.data);
+    } catch (error) {
+      console.error("Failed to fetch analytics:", error);
+    }
+  };
+
   const setDailyReminder = () => {
     // Show notification reminder every 24 hours
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -330,9 +436,22 @@ const PatientDashboard = ({ user }) => {
     }
   };
 
+  const getTrendIcon = (trend) => {
+    if (!trend) return null;
+    
+    switch (trend.direction) {
+      case 'increasing':
+        return <span className="text-green-600">↗ +{trend.percentage}%</span>;
+      case 'decreasing':
+        return <span className="text-red-600">↘ -{trend.percentage}%</span>;
+      default:
+        return <span className="text-gray-600">→ {trend.percentage}%</span>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between">
@@ -340,26 +459,41 @@ const PatientDashboard = ({ user }) => {
               <h1 className="text-2xl font-bold text-gray-800">Patient Dashboard</h1>
               <p className="text-gray-600">{user.name} • ID: {user.patient_id}</p>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-6">
               {compliance && (
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {Math.round(compliance.compliance_percentage)}%
+                <>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {Math.round(compliance.compliance_percentage)}%
+                    </div>
+                    <div className="text-sm text-gray-600">Compliance</div>
                   </div>
-                  <div className="text-sm text-gray-600">Compliance</div>
-                </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {compliance.average_daily_hours}h
+                    </div>
+                    <div className="text-sm text-gray-600">Daily Average</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">
+                      {getTrendIcon(compliance.usage_trend)}
+                    </div>
+                    <div className="text-sm text-gray-600">Trend</div>
+                  </div>
+                </>
               )}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Bluetooth Connection */}
           <BluetoothConnection 
             patientId={user.id}
             onDeviceConnected={() => {
               fetchUsageData();
               fetchCompliance();
+              fetchAnalytics();
             }}
           />
 
@@ -367,7 +501,7 @@ const PatientDashboard = ({ user }) => {
           {compliance && (
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Compliance Summary</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
                     {compliance.total_sessions}
@@ -384,10 +518,34 @@ const PatientDashboard = ({ user }) => {
             </div>
           )}
 
-          {/* Usage Chart */}
-          <div className="lg:col-span-2">
-            <UsageChart usageData={usageData} />
-          </div>
+          {/* Usage Statistics */}
+          {analytics && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage Statistics</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Active Days:</span>
+                  <span className="font-semibold">{analytics.active_days}/{analytics.total_days}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Daily Average:</span>
+                  <span className="font-semibold">{analytics.average_daily_hours}h</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Activity Rate:</span>
+                  <span className="font-semibold">
+                    {Math.round((analytics.active_days / analytics.total_days) * 100)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <UsageTrendChart analytics={analytics} />
+          <DayNightChart analytics={analytics} />
         </div>
       </div>
     </div>
@@ -397,9 +555,11 @@ const PatientDashboard = ({ user }) => {
 // Doctor Dashboard Component
 const DoctorDashboard = ({ user }) => {
   const [patients, setPatients] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
 
   useEffect(() => {
     fetchPatients();
+    fetchDashboardData();
   }, [user.id]);
 
   const fetchPatients = async () => {
@@ -411,9 +571,46 @@ const DoctorDashboard = ({ user }) => {
     }
   };
 
+  const fetchDashboardData = async () => {
+    try {
+      const response = await axios.get(`${API}/doctors/${user.id}/dashboard`);
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    }
+  };
+
+  const getComplianceColor = (percentage) => {
+    if (percentage >= 80) return 'text-green-600';
+    if (percentage >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getAlertBadge = (severity) => {
+    const colors = {
+      high: 'bg-red-100 text-red-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      low: 'bg-orange-100 text-orange-800'
+    };
+    return colors[severity] || colors.medium;
+  };
+
+  const getTrendIcon = (trend) => {
+    if (!trend) return null;
+    
+    switch (trend.direction) {
+      case 'increasing':
+        return <span className="text-green-600 text-sm">↗ +{trend.percentage}%</span>;
+      case 'decreasing':
+        return <span className="text-red-600 text-sm">↘ -{trend.percentage}%</span>;
+      default:
+        return <span className="text-gray-600 text-sm">→ {trend.percentage}%</span>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between">
@@ -421,14 +618,64 @@ const DoctorDashboard = ({ user }) => {
               <h1 className="text-2xl font-bold text-gray-800">Doctor Dashboard</h1>
               <p className="text-gray-600">Dr. {user.name} • ID: {user.doctor_id}</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{patients.length}</div>
-                <div className="text-sm text-gray-600">Patients</div>
-              </div>
+            <div className="flex items-center space-x-6">
+              {dashboardData && (
+                <>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{dashboardData.total_patients}</div>
+                    <div className="text-sm text-gray-600">Total Patients</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{dashboardData.active_today}</div>
+                    <div className="text-sm text-gray-600">Active Today</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{dashboardData.alert_count}</div>
+                    <div className="text-sm text-gray-600">Alerts</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">{dashboardData.activity_rate}%</div>
+                    <div className="text-sm text-gray-600">Activity Rate</div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Alerts Section */}
+        {dashboardData && dashboardData.alerts && dashboardData.alerts.length > 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 13.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              Patient Alerts ({dashboardData.alerts.length})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dashboardData.alerts.map((alert) => (
+                <div key={alert.patient_id} className="border border-red-200 rounded-lg p-4 bg-red-50">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-medium text-gray-800">{alert.patient_name}</h3>
+                      <p className="text-sm text-gray-600">
+                        {alert.days_inactive} days inactive
+                      </p>
+                      {alert.last_session && (
+                        <p className="text-xs text-gray-500">
+                          Last: {new Date(alert.last_session).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAlertBadge(alert.severity)}`}>
+                      {alert.severity}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Patients List */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -462,20 +709,28 @@ const DoctorDashboard = ({ user }) => {
                     
                     <div className="text-center">
                       <div className="text-lg font-semibold text-gray-800">
+                        {patient.average_daily_hours}h
+                      </div>
+                      <div className="text-xs text-gray-600">Daily Avg</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-gray-800">
                         {Math.round(patient.total_duration_minutes / 60)}h
                       </div>
                       <div className="text-xs text-gray-600">Total Hours</div>
                     </div>
                     
                     <div className="text-center">
-                      <div className={`text-lg font-semibold ${
-                        patient.compliance_percentage >= 80 ? 'text-green-600' :
-                        patient.compliance_percentage >= 60 ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
+                      <div className={`text-lg font-semibold ${getComplianceColor(patient.compliance_percentage)}`}>
                         {Math.round(patient.compliance_percentage)}%
                       </div>
                       <div className="text-xs text-gray-600">Compliance</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      {getTrendIcon(patient.usage_trend)}
+                      <div className="text-xs text-gray-600">Trend</div>
                     </div>
                     
                     <div className="flex items-center">
