@@ -256,7 +256,11 @@ class TestDoctorPatientDashboard(unittest.TestCase):
         
     def start_websocket_client(self):
         """Start a WebSocket client to test real-time updates"""
-        ws_url = f"{BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/api/ws/{self.__class__.patient_id}"
+        # Use wss:// for https:// and ws:// for http://
+        base_url = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://')
+        ws_url = f"{base_url}/api/ws/{self.__class__.patient_id}"
+        
+        logger.info(f"Connecting to WebSocket at {ws_url}")
         
         def on_message(ws, message):
             logger.info(f"WebSocket received: {message}")
@@ -273,14 +277,17 @@ class TestDoctorPatientDashboard(unittest.TestCase):
             logger.info("WebSocket connection opened")
             
         def run_websocket():
-            ws = websocket.WebSocketApp(
-                ws_url,
-                on_open=on_open,
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close
-            )
-            ws.run_forever()
+            try:
+                ws = websocket.WebSocketApp(
+                    ws_url,
+                    on_open=on_open,
+                    on_message=on_message,
+                    on_error=on_error,
+                    on_close=on_close
+                )
+                ws.run_forever()
+            except Exception as e:
+                logger.error(f"WebSocket thread error: {e}")
             
         # Start WebSocket client in a separate thread
         threading.Thread(target=run_websocket, daemon=True).start()
