@@ -167,15 +167,18 @@
 
   - task: "Doctor Dashboard APIs"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented doctor endpoints to view all patients and their compliance data"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested doctor dashboard API. Doctors can view all patients and their compliance data."
 
   - task: "WebSocket Real-time Updates"
     implemented: true
