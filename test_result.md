@@ -182,15 +182,18 @@
 
   - task: "WebSocket Real-time Updates"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Added WebSocket support for real-time data updates"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested WebSocket connection and real-time updates. Fixed JSON serialization issue with datetime objects."
 
 ## frontend:
   - task: "Authentication UI"
