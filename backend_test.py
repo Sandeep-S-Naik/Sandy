@@ -288,5 +288,30 @@ if __name__ == "__main__":
     except ImportError:
         os.system("pip install requests")
     
-    # Run the tests
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+    # Run the tests with more verbose output
+    import sys
+    runner = unittest.TextTestRunner(verbosity=2)
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestDoctorPatientDashboard)
+    result = runner.run(suite)
+    
+    # Print summary
+    print("\n=== TEST SUMMARY ===")
+    print(f"Total tests: {result.testsRun}")
+    print(f"Failures: {len(result.failures)}")
+    print(f"Errors: {len(result.errors)}")
+    
+    # Print failures and errors
+    if result.failures:
+        print("\n=== FAILURES ===")
+        for test, error in result.failures:
+            print(f"\n{test}")
+            print(error)
+    
+    if result.errors:
+        print("\n=== ERRORS ===")
+        for test, error in result.errors:
+            print(f"\n{test}")
+            print(error)
+            
+    # Exit with appropriate code
+    sys.exit(len(result.failures) + len(result.errors))
