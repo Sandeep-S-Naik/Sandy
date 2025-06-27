@@ -107,15 +107,18 @@
 ## backend:
   - task: "User Authentication System"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented login system for both patients and doctors with automatic user creation"
+      - working: true
+        agent: "testing"
+        comment: "Successfully tested patient and doctor login endpoints. Both create new users and return existing users correctly."
 
   - task: "Bluetooth Device Management"
     implemented: true
